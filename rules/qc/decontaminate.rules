@@ -28,11 +28,11 @@ rule align_to_host:
             rp = Pairs),
         index = str(Cfg['qc']['host_fp']/'{host}.fasta.amb')
     output:
-        temp(str(QC_FP/'decontam'/'intermediates'/'{host}'/'{sample}.bam'))
+        temp(str(QC_FP/'decontam_bwa'/'intermediates'/'{host}'/'{sample}.bam'))
     threads:
         Cfg['qc']['threads']
     params:
-        sam = temp(str(QC_FP/'decontam'/'intermediates'/'{host}'/'{sample}.sam')),
+        sam = temp(str(QC_FP/'decontam_bwa'/'intermediates'/'{host}'/'{sample}.sam')),
         index_fp = str(Cfg['qc']['host_fp'])
     shell:
         """
@@ -45,9 +45,9 @@ rule align_to_host:
 
 rule get_mapped_reads:
     input:
-        str(QC_FP/'decontam'/'intermediates'/'{host}'/'{sample}.bam')
+        str(QC_FP/'decontam_bwa'/'intermediates'/'{host}'/'{sample}.bam')
     output:
-        ids = str(QC_FP/'decontam'/'intermediates'/'{host}'/'{sample}.ids'),
+        ids = str(QC_FP/'decontam_bwa'/'intermediates'/'{host}'/'{sample}.ids'),
     params:
         pct_id =  Cfg['qc']['pct_id'],
         frac = Cfg['qc']['frac']
@@ -64,10 +64,10 @@ rule get_mapped_reads:
 rule aggregate_reads:
     input:
         expand(
-            str(QC_FP/'decontam'/'intermediates'/'{host}'/'{{sample}}.ids'),
+            str(QC_FP/'decontam_bwa'/'intermediates'/'{host}'/'{{sample}}.ids'),
             host=HostGenomes.keys())
     output:
-        temp(str(QC_FP/'decontam'/'intermediates'/'{sample}_hostreads.ids')),
+        temp(str(QC_FP/'decontam_bwa'/'intermediates'/'{sample}_hostreads.ids')),
     run:
         if len(input) == 0:
             shell("touch {output}")
@@ -76,12 +76,12 @@ rule aggregate_reads:
 
 rule filter_reads:
     input:
-        hostreads = str(QC_FP/'decontam'/'intermediates'/'{sample}_hostreads.ids'),
+        hostreads = str(QC_FP/'decontam_bwa'/'intermediates'/'{sample}_hostreads.ids'),
         reads = str(QC_FP/'cleaned'/'{sample}_{rp}.fastq.gz'),
-        hostids = expand(str(QC_FP/'decontam'/'intermediates'/'{host}'/'{{sample}}.ids'), host=HostGenomes.keys())
+        hostids = expand(str(QC_FP/'decontam_bwa'/'intermediates'/'{host}'/'{{sample}}.ids'), host=HostGenomes.keys())
     output:
-        reads = str(QC_FP/'decontam'/'{sample}_{rp}.fastq.gz'),
-        log = str(QC_FP/'log'/'decontam'/'{sample}_{rp}.txt')
+        reads = str(QC_FP/'decontam_bwa'/'{sample}_{rp}.fastq.gz'),
+        log = str(QC_FP/'log'/'decontam_bwa'/'{sample}_{rp}.txt')
     run:
         original = int(str(subprocess.getoutput(
             "zcat {} | wc -l".format(input.reads))).strip())//4
@@ -103,3 +103,80 @@ rule filter_reads:
         with open(output.log, 'w') as log:
             log.write("{}\n".format("\t".join(list(hostdict.keys()) + ["host","nonhost"] )))
             log.write("{}\n".format("\t".join( map(str, list(hostdict.values()) + [host, nonhost]) )))
+
+ruleorder: run_krakenuniq_paired > run_krakenuniq_unpaired
+
+rule run_krakenuniq_paired:
+    input:
+        r1 = str(QC_FP/'decontam_bwa'/'{sample}_1.fastq.gz'),
+        r2 = str(QC_FP/'decontam_bwa'/'{sample}_2.fastq.gz')
+    output:
+        report = str(QC_FP/'decontam'/'intermediates'/'{sample}.tax.report.tsv'),
+        reads = str(QC_FP/'decontam'/'intermediates'/'{sample}.read.report.tsv'),
+        hostids =  str(QC_FP/'decontam'/'intermediates'/'{sample}.ids'),
+        log = str(QC_FP/'log'/'decontam'/'{sample}_krakenuniq.txt')
+    threads:
+        Cfg['qc']['threads']
+    params:
+        index_db = str(Cfg['qc']['krakenuniq_db'])
+    shell:
+        "krakenuniq \
+            --db {params.index_db} \
+            --threads {threads}  \
+            --report-file {output.report} \
+            --gzip-compressed \
+            --paired \
+            --fastq-input {input.r1} {input.r2} > {output.reads} 2> {output.log}; \
+         cat {output.reads} | awk '\$1 != \"U\"' | cut -f2 > {output.hostids};"
+
+rule run_krakenuniq_unpaired:
+    input:
+        r1 = str(QC_FP/'decontam_bwa'/'{sample}_1.fastq.gz')
+    output:
+        report = str(QC_FP/'decontam'/'intermediates'/'{sample}.tax.report.tsv'),
+        reads = str(QC_FP/'decontam'/'intermediates'/'{sample}.read.report.tsv'),
+        hostids =  str(QC_FP/'decontam'/'intermediates'/'{sample}.ids'),
+        log = str(QC_FP/'log'/'decontam'/'{sample}_krakenuniq.txt')
+    threads:
+        Cfg['qc']['threads']
+    params:
+        index_db = str(Cfg['qc']['krakenuniq_db'])
+    shell:
+        "krakenuniq \
+            --db {params.index_db} \
+            --threads {threads}  \
+            --report-file {output.report} \
+            --gzip-compressed \
+            --fastq-input {input.r1} > {output.reads} 2> {output.log}; \
+         cat {output.reads} | awk '\$1 != \"U\"' | cut -f2 > {output.hostids};"
+
+rule filter_reads_krakenuniq:
+    input:
+        hostids = str(QC_FP/'decontam'/'intermediates'/'{sample}.ids'),
+        reads = str(QC_FP/'decontam_bwa'/'{sample}_{rp}.fastq.gz'),
+    output:
+        reads = str(QC_FP/'decontam'/'{sample}_{rp}.fastq.gz'),
+        log = str(QC_FP/'log'/'decontam'/'{sample}_{rp}.txt')
+    run:
+        original = int(str(subprocess.getoutput(
+            "zcat {} | wc -l".format(input.reads))).strip())//4
+        classified = int(subprocess.getoutput(
+            "cat {} | wc -l".format(input.hostids)).strip())
+        krakenuniq = int(original-classified)
+        shell("""
+        gzip -dc {input.reads} | \
+        rbt fastq-filter {input.hostreads} | \
+        gzip > {output.reads}
+        """)
+        
+        hostdict = OrderedDict()
+        for hostid in input.hostids:
+            hostname = os.path.basename(os.path.dirname(hostid))
+            hostcts = int(subprocess.getoutput("cat {} | wc -l".format(hostid)).strip())
+            hostdict[hostname] = hostcts
+        
+        with open(output.log, 'w') as log:
+            log.write("{}\n".format("\t".join(list(hostdict.keys()) + ["krakenuniq"] )))
+            log.write("{}\n".format("\t".join( map(str, list(hostdict.values()) + [krakenuniq]) )))
+
+
