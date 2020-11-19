@@ -47,6 +47,12 @@ See how people are using Sunbeam:
 
 ### Changelog:
 
+
+Nobvember 19, 2020: 
+ - added decom step with krakenuniq to remove human and PhiX classified reads
+
+###### repository cloned by Sam (November 19, 2020)
+
 #### Development version (future 3.0 release; as of December 2, 2019)
 
  - New command `sunbeam extend` to automatically install Sunbeam extensions! Use like `sunbeam extend https://github.com/sunbeam-labs/sbx_report`
