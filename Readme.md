@@ -11,6 +11,18 @@ doesn't have pre-existing dependencies or admin privileges, and can be deployed
 on most Linux workstations and clusters. To read more, check out [our paper
 in Microbiome](https://microbiomejournal.biomedcentral.com/articles/10.1186/s40168-019-0658-x).
 
+Usefull commands
+- all_qc
+all_decontam
+all
+all_metaspades
+all_annotate
+all_assembly
+all_coverage
+all_classify
+all_mapping
+all_reports
+
 Sunbeam currently automates the following tasks:
 
 * Quality control, including adaptor trimming, host read removal, and quality
